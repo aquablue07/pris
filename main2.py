@@ -1,3 +1,12 @@
+##use this script
+##This script has modified noise filter rather than frequency filter
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Mon March 16 2020
+
+@author: Han
+"""
 import os, sys, math, select
 import numpy as np
 import pandas as pd
@@ -7,8 +16,7 @@ import time as tm
 import scipy.io.wavfile as wavf
 import datetime
 import warnings
-import queue
-import random
+import tempfile
 
 from feature_extraction import filters as fil
 from feature_extraction import lpcgen as lpg
@@ -25,25 +33,20 @@ from sklearn.externals import joblib
 import pickle
 
 warnings.filterwarnings("ignore")
-
-"""set this true not to send any data to server"""
-test = True
-
 """clf = joblib.load('input/detection_iris_new.pkl')## this is the vnear robust one"""
-clf = joblib.load('input/detection_backyaardwithnoise.pkl')## this is taken at the beach
+clf = joblib.load('input/detection_new18july.pkl')## this is taken at the beach
 #clm = joblib.load('input/detection_new18july.pkl')
 #clf1 = joblib.load('input/dronedetectionfinal_new.pkl')
-
+#discard this part----------------------------------------------------------
 rows = 10
 cols = 60
 winlist = []
-datacount = 4
 
 """set this part to the number of logs you want to save before computing confidence level"""
-log = logdata(datacount)
+log = logdata(3) ##check getconfi.py for more details(in feature_extraction folder)
 
 ######################################################################################################
-global itervalue
+global itervalue #I used this when I needed to get only a certain number o iterations
 itervalue = 0
 
 """this is the script which would record data"""
@@ -51,22 +54,21 @@ def record(time = 1, fs = 44100):
     file = 'temp_out'
     duration = time
     recording = sd.rec(int(duration*fs),samplerate=fs, channels=1, blocking  = False)
-    
-    # this is very important to remove sound end noise... don't use sleep-_- Han
-    sd.wait()
-
+    for i in range(time):
+        i += 1
+        tm.sleep(1)
     recording = recording[:,0]
     np.save(file,recording)
     np.seterr(divide='ignore', invalid='ignore')
-    scaled = np.int16(recording/np.max(np.abs(recording)) * 32767)
+    scaled = np.int16(recording/np.max(np.abs(recording)) * 32767) #I am using normalised data so that the processing doesnt throw errors
     wavf.write(file+'.wav', fs, scaled)
-    """uncomment the following if you want to save data"""
+    """uncomment the following if you want to save data"""#use the commented portion only when you need to collect data at the same time you do processing
     ##################################################################################################
     #wavf.write(file+'_'+str(itervalue)+'.wav', fs, scaled)
     #data, fs = librosa.load(file+'_'+str(itervalue)+'.wav')
     ######################################################################################################
     data, fs = librosa.load(file+'.wav')
-    os.remove(file+'.npy')
+    #os.remove(file+'.npy')
     #os.remove(file+'.wav')
     return data, fs
 
@@ -77,13 +79,13 @@ def dist_prediction_label(value):
         label = "midrange"
     elif value == 2:
         label = "near"
-    #elif value == 3:
-        #label = "vfar or nodrone"
     elif value == 3:
+        label = "vfar or nodrone"
+    elif value == 4:
         label = "vnear"
     return label
 
-noise, sfr = record()
+#noise, sfr = record(time = 15)##set time appropriately for good results
 
 # def drone_prediction_label(value):
 #     if value == 1:
@@ -94,7 +96,9 @@ noise, sfr = record()
 
 ######################################################################################################################
 """set api and initiate calls"""
-api_url = 'http://mlc67-cmp-00.egr.duke.edu/api/gardens'
+# api_url = 'http://mlc67-cmp-00.egr.duke.edu/api/events' ##This is dukes server which Chunge created
+api_url = 'http://mlc67-cmp-00.egr.duke.edu/api/caryevents' ##This is carytown server  
+
 apikey = None
 push_url = "https://onesignal.com/api/v1/notifications"
 pushkey = None
@@ -106,21 +110,17 @@ LOCATION = "Drone Detector A"
 send = apicalls(api_url,apikey, push_url,pushkey, sound_url, soundkey, wav_url,wavkey, LOCATION)##This initiates the push notification and mongodb database
 log.insertdf(3,str(datetime.datetime.now())[:-7]) #inserted dummy value to eliminate inconsistency
 i = 0
-bandpass = [800,8500]#filter unwanted frequencies
+bandpass = [600,10000]#filter unwanted frequencies
 prev_time= tm.time()#initiate time
-
-waveq = queue.Queue(datacount)
-recdata = np.array([],dtype="float32") # for wave concatenation
+reccount = 0
+recdata = np.array([],dtype="float32")
 basename = "drone"
-xx = [3,3,3,0,0]    # test prediction value, basic check
-#xx = [0,0,1,2,3,0,0,3,3,3,0,0]    # test prediction value, advanced check
-
 """main code"""
-try:#don't want user warnings
+try:#don't want useless user warnings
     while True:
         data, fs = record()
-        out = reduce_noise(data,noise)
-        ns = fil.bandpass_filter(data,bandpass)
+        #out = reduce_noise(data,noise)
+        #ns = fil.bandpass_filter(data,bandpass)
         try:
             p,freq, b = hmn.psddetectionresults(data)
         except IndexError:
@@ -129,72 +129,58 @@ try:#don't want user warnings
         b = True
         
         if b:
-            # fs = 44100#force 44100 sample rate to prediction why?
-            #mfcc, chroma, mel, spect, tonnetz = fex.extract_feature(data,fs)#ns changed to raw data
-            mfcc, chroma, mel, spect, tonnetz = fex.extract_feature(ns,fs)
+            fs = 44100#force 44100 sample rate to prediction
+            #mfcc, chroma, mel, spect, tonnetz = fex.extract_feature(ns,fs)#ns changed to raw data
+            mfcc, chroma, mel, spect, tonnetz = fex.extract_feature(data,fs)#ns changed to raw data
             #a,e,k = lpg.lpc(ns,10)
             mfcc_test = par.get_parsed_mfccdata(mfcc, chroma,mel,spect,tonnetz)
             #lpc_test = par.get_parsed_lpcdata(a,k,freq)
-            if test:
-                x1 = random.randint(0,3)
-                x1 = xx[i]
-            else:
-                x1 = clf.predict(mfcc_test)
-
+            x1 = clf.predict(mfcc_test)
             #x02 = clm.predict(mfcc_test)
             #x1 = ((x01[0]+x01[0])/2)
             #x2 = clf1.predict(lpc_test) 
-            print("Drone at %s, %s"% (dist_prediction_label(int(x1)), x1))
+            print("Drone at %s"% dist_prediction_label(int(x1)))
             log.insertdf(int(x1),str(datetime.datetime.now())[:-7])
+            print(x1)
             output = log.get_result()
-            print(output)
-            print()            
-            # collect data for datacount
-            if waveq.full():    # if full, remove the first
-                waveq.get()            
-            waveq.put(data)     # put another data
-
             '''-----------uncomment if you want to save logs-----------------'''
             #log.logdf(sys.argv[1],x01[0],x02[0],str(datetime.datetime.now())[:-7])
             '''---------------------------------------------------------------'''
+            
             if True:#i > 9:
-                #print(int(output['Label']))
+                print(int(output['Label']))
                 #win.addstr(7,5,"Recieved a Result!")
                 dt = tm.time() - prev_time
-                if dt > 30 or (i>=3 and test):#send output every 30secs
+                if dt > 30:#send output every 30secs
                     print('sent %s'% int(output['Label']))
-                    if not test:
-                        send.sendtoken2(output)
+                    send.sendtoken(output)#This line sends the log to srver(recent detection with confidence)
                     prev_time = tm.time()
-                    if int(output['Label']) == int(3) or int(output['Label']) == int(2):
-            
-                        suffix = datetime.datetime.now().strftime("%y%m%d_%H%M%S")
-                        sfilename = "_".join([basename, suffix])+".wav" # e.g. 'mylogfile_120508_171442'
-
-                        if not test:
-                            send.push_notify(sfilename)#when drone is detected this sends push notification to user in his app
-
+                    if int(output['Label']) == int(4) or int(output['Label']) == int(2):
+                        send.push_notify()#when drone is detected this sends push notification to user in his app
+                        if reccount == 0:
+                            suffix = datetime.datetime.now().strftime("%y%m%d_%H%M%S")
+                            reccount=1
+                            print("Recording started!")
                         print("pushed %s"% int(output['Label']))
-
-                        while not waveq.empty():
-                            recdata = np.concatenate([recdata, waveq.get()])
-                        np.seterr(divide='ignore', invalid='ignore')
-                        recscaled = np.int16(recdata/np.max(np.abs(recdata)) * 32767)
+                    #win.addstr(8,5,"Data Sent!")
+                #recording for 10 secs:
+                if reccount > 0 and reccount < 12:
+                    recdata = np.concatenate([recdata, data])
+                    np.seterr(divide='ignore', invalid='ignore')
+                    recscaled = np.int16(recdata/np.max(np.abs(recdata)) * 32767)
+                    reccount += 1
+                    if reccount == 11:
+                        sfilename = "_".join([basename, suffix])+".wav" # e.g. 'mylogfile_120508_171442'
                         #np.save(tf.name,recscaled)
                         wavf.write(sfilename, fs, recscaled)
-                        print(sfilename)
-
-                        output.fileName = sfilename                        
-                        if not test:
-                            send.infosendtoken(output, sfilename)
-                            send.wavsendtoken(sfilename)
-
+                        send.infosendtoken(output, sfilename)
+                        send.wavsendtoken(sfilename)
                         print("file succesfully uploaded to server!")
-                        #os.remove(sfilename)
+                        os.remove(sfilename)
                         recdata = np.array([],dtype="float32")
-                        exit()
-    
-                    #win.addstr(8,5,"Data Sent!")
+                        reccount = 0
+
+
             ######################################################################################################
             # if itervalue > int(sys.argv[3]):
             #     log.savedf(sys.argv[2])
@@ -212,3 +198,4 @@ except KeyboardInterrupt:
 
 
 print('iter_num:',i)
+

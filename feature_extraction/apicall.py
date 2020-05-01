@@ -9,7 +9,7 @@ import requests
 import json
 import os
 import sys
- 
+
 class apicalls(object):
     def __init__(self, api_url, apikey, push_url, pushkey, sound_url, soundkey, wav_url, wavkey, location):
         self.url = api_url
@@ -35,7 +35,9 @@ class apicalls(object):
         "distance" : self.Label,
         "confidence": self.confidence,
         "location": self.location,
-        "time": self.timestamp
+        "time": self.timestamp,
+        "fileName": record['fileName'],
+        "comment": 'ok'
         }
         while True:
             try:
@@ -87,7 +89,9 @@ class apicalls(object):
         "distance" : self.Label2,
         "confidence": self.confidence,
         "location": self.location,
-        "time": self.timestamp
+        "time": self.timestamp,
+        "fileName": record['fileName'],
+        "comment": 'ok'
         }
         while True:
             try:
@@ -133,9 +137,12 @@ class apicalls(object):
     
     def wavsendtoken(self, recfname):##tokens are sent using the format in self.log
         # recname = os.path.abspath(os.path.join(os.getcwd(),'../'+recfname))
-	# edit the recname file path 
-	recname = os.path.abspath(os.path.join(os.getcwd(),recfname))
-        self.wavfile = {"file":(recfname, open(recname,'rb'),'application/x-www-form-urlencoded',{'Expires':'0'})}#wav file to send
+        # edit the recname file path 
+        recname = os.path.abspath(os.path.join(os.getcwd(),recfname))
+
+        filed = open(recname, 'rb')
+        self.wavfile = { 'file': (recfname, filed, 'application/x-www-form-urlencoded', {'Expires':'0'}) } #wav file to send
+        
         while True:
             try:
                 # do stuff
@@ -188,23 +195,43 @@ class apicalls(object):
             self.label = "vnear"
         return self.label
     
-    def push_notify(self):##This uses the api Chunge built.
-        """
+    def push_notify(self, filename):##This uses the api Chunge built.
+        """ 
+        # prison
         self.header = {"Content-Type": "application/json; charset=utf-8",
         "Authorization": "Basic NDMyMTM5MjctMzYxZC00OTM3LTkxODEtYjljNDY5OTdmNGE0"}
         self.payload = {"app_id": "2ebe188c-34d4-423f-8c7f-21bd0483fc95",
         "contents": {"en": "Drone Detected!!"},
-	    "template_id": "658d2118-ea02-4902-88e0-b708fa2e4fcd",
+        "template_id": "658d2118-ea02-4902-88e0-b708fa2e4fcd",
         "included_segments": ["All"]}
         """
 
-        # Updates of Cary
+        """
+        # Updates of Cary        
         self.header = {"Content-Type": "application/json; charset=utf-8",
-                       "Authorization": "Basic NTEzMmU2YjAtYTdjOC00OGE0LWI0MWUtM2NiYzA5YmQ5NmU1"}
+                    "Authorization": "Basic NTEzMmU2YjAtYTdjOC00OGE0LWI0MWUtM2NiYzA5YmQ5NmU1"}
         self.payload = {"app_id": "e2d74d80-93dd-48f7-879f-ed4cb8cebe5f",
         "contents": {"en": "Drone Detected!!"},
-	    "template_id": "8c1498e3-403f-4b94-9a72-9d0ea002e4db",
+        "template_id": "8c1498e3-403f-4b94-9a72-9d0ea002e4db",
         "included_segments": ["All"]}
+        """
+        # Updates of Garden
+        # self.header = {"Content-Type": "application/json; charset=utf-8",
+        #             "Authorization": "Basic MGIwODdkMWItNWMwMi00YmFkLWJlOTUtZTk5OWFkMWRkNDM3"}
+        # self.payload = {"app_id": "fee80964-6d75-49f0-b715-0b6e922d6e68",        
+        # "contents": {"en": "Drone Detected!!"},
+        # "template_id": "bf1d0ff3-e215-41f5-b419-d7934fa0fc10",
+        # "included_segments": ["All"]}   
+
+        # Updates OneSignal app id 
+        self.header = {"Content-Type": "application/json; charset=utf-8",
+                    "Authorization": "Basic MDhjMTQ1ZTUtOThmZi00ZDJhLWJkZjgtMmJkNzFjOGU0MDZj"}
+        self.payload = {"app_id": "b0f458fc-e4b5-4d29-aed6-19fd0da33172",        
+        "contents": {"en": "Drone Detected!!" },
+        "data": { "filename" : filename },
+        "template_id": "1bb88d68-164e-42be-9309-49045b68f235",
+        "included_segments": ["All"]}        
+
 
         self.req = requests.post(self.pushurl,headers = self.header,data = json.dumps(self.payload))
         return self.req.text
@@ -220,6 +247,6 @@ class apicalls(object):
 #        return self.confidencelabel
 
 
- 
+
 
 

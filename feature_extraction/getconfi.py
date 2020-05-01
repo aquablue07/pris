@@ -46,6 +46,9 @@ class logdata:
             self.occurance = self.get_occurance()
             self.confidence = self.get_confidence(self.occurance)
 
+            print(self.df)
+            print(self.occurance)
+            print(self.confidence)
             self.df['Occurance'] = self.df.Label.apply(lambda x: self.occurance[x])
             self.df['Confidence'] = self.df.Label.apply(lambda x: self.confidence[x])
         
